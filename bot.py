@@ -8,12 +8,14 @@ from flask_cors import CORS
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes
 
-# ==================== THÔNG TIN CẤU HÌNH ====================
-BOT_TOKEN = "THAY_BOT_TOKEN_CUA_BAN_VAO_DAY"
-ADMIN_CHAT_ID = "THAY_CHAT_ID_TELEGRAM_CUA_BAN_VAO_DAY"
+# ==================== THÔNG TIN CẤU HÌNH BẢO MẬT ====================
+# Code tự động lấy biến từ Render, nếu không thấy sẽ dùng giá trị mặc định bên dưới
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8766885663:AAHbYNiInm0R7b3LIMhxoTUwK2NlSjDuDwE").strip()
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "7126654319").strip()
+
 NEXTDNS_ID = "ed4988"
 AUTHOR_NAME = "DNS Huy Hiệu"
-# ============================================================
+# =======================================================================
 
 app = Flask(__name__)
 CORS(app)  # Cho phép Web HTML trên GitHub Pages gọi API
@@ -28,7 +30,7 @@ def create_order():
         data = request.json
         name = data.get('name')
         if not name:
-            return jsonify({"success": False, "message": "Thieu ten khách hàng!"}), 400
+            return jsonify({"success": False, "message": "Thiếu tên khách hàng!"}), 400
 
         # Tạo mã đơn hàng ngắn 8 ký tự
         order_id = str(uuid.uuid4())[:8].upper()
@@ -73,10 +75,10 @@ def check_status(order_id):
         return jsonify({"status": "NOT_FOUND"})
     return jsonify({"status": order['status'], "name": order['name']})
 
-# API KIỂM TRA BOT CÒN SỐNG KHÔNG (DÙNG CHO UPTIMEROBOT)
+# API KIỂM TRA BOT CÒN SỐNG KHÔNG (HEALTH CHECK)
 @app.route('/', methods=['GET'])
 def health_check():
-    return "Bot & Server đang hoạt động bình thường 24/7!", 200
+    return "Bot & Server DNS Locket đang hoạt động bình thường 24/7!", 200
 
 # 3. XỬ LÝ NÚT BẤM "XÁC NHẬN" TRÊN TELEGRAM
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,7 +103,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # HÀM CHẠY FLASK SERVER TRÊN CỔNG CỦA RENDER
 def run_flask():
-    # Render sẽ cấp cổng mạng ngẫu nhiên qua biến môi trường PORT
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
 
