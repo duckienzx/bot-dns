@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 import threading
 import requests
@@ -16,26 +17,30 @@ VN_TZ = timezone(timedelta(hours=7))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8766885663:AAHbYNiInm0R7b3LIMhxoTUwK2NlSjDuDwE").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "7126654319").strip()
 
-# Thông tin Upstash Redis chính thức của bạn
+# Thông tin Upstash Redis
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://crucial-redfish-68584.upstash.io").strip()
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAQvoAAIgcDE5MmE5MzU4ODUwZDY0MWM5OTMwNjQ1YzVlMTA1MGRiZg").strip()
 
-# Khởi tạo kết nối Redis
+# Khởi tạo kết nối Upstash Redis
 redis = Redis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
-# Hàm đọc tất cả keys từ Đám Mây Redis
+# Hàm đọc tất cả keys từ Đám Mây Redis (Đã xử lý parse JSON chuẩn)
 def get_all_keys():
     try:
         keys_data = redis.get("dns_vip_keys")
-        return keys_data if keys_data else {}
+        if not keys_data:
+            return {}
+        if isinstance(keys_data, str):
+            return json.loads(keys_data)
+        return keys_data
     except Exception as e:
         print(f"Lỗi đọc dữ liệu từ Redis: {e}")
         return {}
 
-# Hàm lưu keys lên Đám Mây Redis
+# Hàm lưu keys lên Đám Mây Redis (Đã ép kiểu json.dumps)
 def save_all_keys(keys_dict):
     try:
-        redis.set("dns_vip_keys", keys_dict)
+        redis.set("dns_vip_keys", json.dumps(keys_dict, ensure_ascii=False))
     except Exception as e:
         print(f"Lỗi lưu dữ liệu lên Redis: {e}")
 
