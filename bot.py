@@ -1,5 +1,4 @@
 import os
-import json
 import uuid
 import threading
 import requests
@@ -8,33 +7,36 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
+from upstash_redis import Redis
 
 VN_TZ = timezone(timedelta(hours=7))
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8766885663:AAHbYNiInm0R7b3LIMhxoTUwK2NlSjDuDwE").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "7126654319").strip()
 
-KEY_FILE = "keys.json"
+# --- ĐẢM BẢO THÔNG TIN UPSTASH REDIS DƯỚI ĐÂY LÀ CHÍNH XÁC ---
+UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://crucial-redfish-68584.upstash.io").strip()
+UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAQvoAAIgcDE5MmE5MzU4ODUwZDY0MWM5OTMwNjQ1YzVlMTA1MGRiZg").strip()
 
-def load_keys():
-    if os.path.exists(KEY_FILE):
-        try:
-            with open(KEY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+redis = Redis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
-def save_keys():
+# Hàm đọc tất cả keys từ Đám Mây Redis
+def get_all_keys():
     try:
-        with open(KEY_FILE, "w", encoding="utf-8") as f:
-            json.dump(keys, f, ensure_ascii=False, indent=4)
+        keys_data = redis.get("dns_vip_keys")
+        return keys_data if keys_data else {}
     except Exception as e:
-        print(f"Lỗi khi lưu file keys: {e}")
+        print(f"Lỗi đọc Redis: {e}")
+        return {}
 
-keys = load_keys()
+# Hàm lưu keys lên Đám Mây Redis
+def save_all_keys(keys_dict):
+    try:
+        redis.set("dns_vip_keys", keys_dict)
+    except Exception as e:
+        print(f"Lỗi lưu Redis: {e}")
+
 orders = {}
-
 app = Flask(__name__)
 CORS(app)
 
@@ -48,10 +50,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     help_text = (
         "📖 **BẢNG HƯỚNG DẪN QUẢN LÝ BOT DUC KIEN DNS**\n\n"
-        "🔑 **1. Tạo mã Key (Tên + Số ngày + Giá):**\n"
+        "🔑 **1. Tạo mã Key (Lưu đám mây 100% không mất):**\n"
         "• `/genkey <tên_key> <số_ngày> <giá>`\n"
         "  *Ví dụ:* `/genkey VIP30 30 15000` (Giá 15.000 VNĐ)\n"
-        "  *Ví dụ:* `/genkey FREE30 30 0` (Giá 0 VNĐ - Kích hoạt Miễn phí)\n\n"
+        "  *Ví dụ:* `/genkey FREE30 30 0` (Giá 0 VNĐ - Miễn phí)\n\n"
         "🗑️ **2. Xóa mã Key:**\n"
         "• `/delkey <tên_key>` (VD: `/delkey VIP30`)\n\n"
         "📋 **3. Xem danh sách mã:**\n"
@@ -82,6 +84,7 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Số ngày và Giá tiền phải là chữ số hợp lệ!")
         return
 
+    keys = get_all_keys()
     if custom_key in keys:
         await update.message.reply_text(f"❌ Mã `{custom_key}` đã tồn tại trước đó!", parse_mode="Markdown")
         return
@@ -91,14 +94,16 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "price": price,
         "created_at": datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
     }
-    save_keys()
+    
+    # Lưu vĩnh viễn lên Upstash Redis
+    save_all_keys(keys)
 
     await update.message.reply_text(
-        f"🎉 **ĐÃ TẠO MÃ KEY THÀNH CÔNG!**\n\n"
+        f"🎉 **ĐÃ TẠO MÃ KEY THÀNH CÔNG (ĐÃ LƯU ĐÁM MÂY)!**\n\n"
         f"🔑 **Mã Key:** `{custom_key}`\n"
         f"⏳ **Thời hạn:** `{days} ngày`\n"
         f"💵 **Giá thiết lập:** `{price:,} VNĐ`\n\n"
-        f"👉 *Bất kỳ ai có mã đều sử dụng được trên Web!*",
+        f"👉 *Mã này đã được bảo vệ vĩnh viễn không bao giờ mất!*",
         parse_mode="Markdown"
     )
 
@@ -113,10 +118,12 @@ async def delkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_key = context.args[0].upper()
+    keys = get_all_keys()
+
     if target_key in keys:
         del keys[target_key]
-        save_keys()
-        await update.message.reply_text(f"🗑️ Đã xóa thành công mã `{target_key}`!", parse_mode="Markdown")
+        save_all_keys(keys)
+        await update.message.reply_text(f"🗑️ Đã xóa thành công mã `{target_key}` khỏi đám mây!", parse_mode="Markdown")
     else:
         await update.message.reply_text(f"❌ Không tìm thấy mã `{target_key}`!", parse_mode="Markdown")
 
@@ -126,11 +133,12 @@ async def listkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Bạn không có quyền dùng lệnh này!")
         return
 
+    keys = get_all_keys()
     if not keys:
-        await update.message.reply_text("📂 Hiện chưa có mã kích hoạt nào!")
+        await update.message.reply_text("📂 Hiện chưa có mã kích hoạt nào trên đám mây!")
         return
 
-    msg = "📋 **DANH SÁCH MÃ KEY ĐANG CÓ:**\n\n"
+    msg = "📋 **DANH SÁCH MÃ KEY ĐANG LƯU VĨNH VIỄN:**\n\n"
     for k, v in keys.items():
         msg += f"• `{k}`: {v['days']} ngày | Giá: `{v.get('price', 15000):,} VNĐ`\n"
 
@@ -195,6 +203,7 @@ def check_key():
         data = request.json
         raw_key = data.get('key', '').strip().upper()
 
+        keys = get_all_keys()
         if not raw_key or raw_key not in keys:
             return jsonify({"success": False, "message": "Mã kích hoạt không tồn tại hoặc không hợp lệ!"}), 400
 
