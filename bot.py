@@ -9,15 +9,18 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
 from upstash_redis import Redis
 
+# Múi giờ Việt Nam (UTC+7)
 VN_TZ = timezone(timedelta(hours=7))
 
+# Cấu hình Token & ID Admin Telegram
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8766885663:AAHbYNiInm0R7b3LIMhxoTUwK2NlSjDuDwE").strip()
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "7126654319").strip()
 
-# --- ĐẢM BẢO THÔNG TIN UPSTASH REDIS DƯỚI ĐÂY LÀ CHÍNH XÁC ---
+# Thông tin Upstash Redis chính thức của bạn
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://crucial-redfish-68584.upstash.io").strip()
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAQvoAAIgcDE5MmE5MzU4ODUwZDY0MWM5OTMwNjQ1YzVlMTA1MGRiZg").strip()
 
+# Khởi tạo kết nối Redis
 redis = Redis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
 # Hàm đọc tất cả keys từ Đám Mây Redis
@@ -26,7 +29,7 @@ def get_all_keys():
         keys_data = redis.get("dns_vip_keys")
         return keys_data if keys_data else {}
     except Exception as e:
-        print(f"Lỗi đọc Redis: {e}")
+        print(f"Lỗi đọc dữ liệu từ Redis: {e}")
         return {}
 
 # Hàm lưu keys lên Đám Mây Redis
@@ -34,13 +37,13 @@ def save_all_keys(keys_dict):
     try:
         redis.set("dns_vip_keys", keys_dict)
     except Exception as e:
-        print(f"Lỗi lưu Redis: {e}")
+        print(f"Lỗi lưu dữ liệu lên Redis: {e}")
 
 orders = {}
 app = Flask(__name__)
 CORS(app)
 
-# ==================== LỆNH TELEGRAM ====================
+# ==================== CÁC LỆNH TELEGRAM ====================
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
@@ -50,13 +53,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     help_text = (
         "📖 **BẢNG HƯỚNG DẪN QUẢN LÝ BOT DUC KIEN DNS**\n\n"
-        "🔑 **1. Tạo mã Key (Lưu đám mây 100% không mất):**\n"
+        "🔑 **1. Tạo mã Key (Lưu đám mây 100% vĩnh viễn):**\n"
         "• `/genkey <tên_key> <số_ngày> <giá>`\n"
-        "  *Ví dụ:* `/genkey VIP30 30 15000` (Giá 15.000 VNĐ)\n"
-        "  *Ví dụ:* `/genkey FREE30 30 0` (Giá 0 VNĐ - Miễn phí)\n\n"
+        "  *Ví dụ:* `/genkey VIP30 30 15000` (Key 30 ngày - Giá 15k)\n"
+        "  *Ví dụ:* `/genkey FREE30 30 0` (Key Miễn phí 0đ)\n\n"
         "🗑️ **2. Xóa mã Key:**\n"
-        "• `/delkey <tên_key>` (VD: `/delkey VIP30`)\n\n"
-        "📋 **3. Xem danh sách mã:**\n"
+        "• `/delkey <tên_key>` (Ví dụ: `/delkey VIP30`)\n\n"
+        "📋 **3. Xem danh sách mã đang có:**\n"
         "• `/listkeys`"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -70,8 +73,8 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 3:
         await update.message.reply_text(
-            "⚠️ **Cú pháp:** `/genkey <tên_key> <số_ngày> <giá_tiền>`\n"
-            "VD: `/genkey VIP30 30 15000`",
+            "⚠️ **Cú pháp chưa đúng:** `/genkey <tên_key> <số_ngày> <giá_tiền>`\n"
+            "Ví dụ: `/genkey VIP30 30 15000`",
             parse_mode="Markdown"
         )
         return
@@ -103,7 +106,7 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔑 **Mã Key:** `{custom_key}`\n"
         f"⏳ **Thời hạn:** `{days} ngày`\n"
         f"💵 **Giá thiết lập:** `{price:,} VNĐ`\n\n"
-        f"👉 *Mã này đã được bảo vệ vĩnh viễn không bao giờ mất!*",
+        f"👉 *Mã này đã được bảo vệ vĩnh viễn trên Upstash Cloud!*",
         parse_mode="Markdown"
     )
 
