@@ -58,7 +58,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 **BẢNG HƯỚNG DẪN QUẢN LÝ BOT DUC KIEN DNS**\n\n"
         "🔑 **1. Tạo mã Key:**\n"
         "• `/genkey <tên_key> <số_ngày> <giá>`\n"
-        "  *Ví dụ:* `/genkey VIP30 30 15000`\n\n"
+        "  *Ví dụ:* `/genkey KEY30 30 15000`\n\n"
         "🗑️ **2. Xóa mã Key:**\n"
         "• `/delkey <tên_key>`\n\n"
         "📋 **3. Xem danh sách mã:**\n"
@@ -250,7 +250,7 @@ def download_profile(dns_id, username):
     <key>PayloadDisplayName</key>
     <string>NextDNS ({dns_id}) · {username}</string>
     <key>PayloadDescription</key>
-    <string>Cấu hình DNS VIP Locket dành riêng cho {username}. Vận hành bởi Duc Kien DNS.</string>
+    <string>Cấu hình DNS Locket dành riêng cho {username}. Vận hành bởi Duc Kien DNS.</string>
     <key>PayloadIdentifier</key>
     <string>io.nextdns.{dns_id}.profile</string>
     <key>PayloadOrganization</key>
