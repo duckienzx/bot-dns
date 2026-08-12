@@ -23,7 +23,6 @@ UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAQvoAAIgcDE5
 
 redis = Redis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
-# Hàm đọc keys từ Redis
 def get_all_keys():
     try:
         keys_data = redis.get("dns_vip_keys")
@@ -36,7 +35,6 @@ def get_all_keys():
         print(f"Lỗi đọc dữ liệu từ Redis: {e}")
         return {}
 
-# Hàm lưu keys lên Redis
 def save_all_keys(keys_dict):
     try:
         redis.set("dns_vip_keys", json.dumps(keys_dict, ensure_ascii=False))
@@ -136,6 +134,7 @@ def create_order():
     try:
         data = request.json
         name = data.get('name')
+        full_link = data.get('full_link', 'Không có link') # Nhận link đầy đủ từ web
         amount = data.get('amount', 15000)
         
         if not name:
@@ -146,6 +145,7 @@ def create_order():
 
         orders[order_id] = {
             'name': name,
+            'full_link': full_link,
             'status': 'PENDING',
             'created_at': created_at,
             'amount': amount,
@@ -154,7 +154,8 @@ def create_order():
 
         msg = (
             f"🔔 **ĐƠN HÀNG MỚI!**\n\n"
-            f"👤 **Khách hàng:** `{name}`\n"
+            f"👤 **Username:** `{name}`\n"
+            f"🔗 **Link Locket:** {full_link}\n"
             f"🆔 **Mã đơn:** `{order_id}`\n"
             f"💵 **Số tiền:** `{amount:,} VNĐ`\n"
             f"📝 **Nội dung CK:** `LOCKET {order_id}`\n"
@@ -209,6 +210,7 @@ def cancel_order():
         if order_id in orders:
             orders[order_id]['status'] = 'CANCELLED'
             customer_name = orders[order_id]['name']
+            full_link = orders[order_id].get('full_link', 'Không có link')
             created_at = orders[order_id]['created_at']
             message_id = orders[order_id].get('message_id')
             cancelled_at = datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
@@ -221,7 +223,8 @@ def cancel_order():
                         "message_id": message_id,
                         "text": (
                             f"❌ **ĐƠN HÀNG ĐÃ HỦY!**\n\n"
-                            f"👤 **Khách:** `{customer_name}`\n"
+                            f"👤 **Username:** `{customer_name}`\n"
+                            f"🔗 **Link Locket:** {full_link}\n"
                             f"🆔 **Mã đơn:** `{order_id}`\n"
                             f"⏰ **Tạo lúc:** `{created_at}`\n"
                             f"🚫 **Hủy lúc:** `{cancelled_at}`"
@@ -332,13 +335,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if order_id in orders:
             orders[order_id]['status'] = 'APPROVED'
             customer_name = orders[order_id]['name']
+            full_link = orders[order_id].get('full_link', 'Không có link')
             created_at = orders[order_id]['created_at']
             completed_at = datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
             
             await query.edit_message_text(
                 text=(
                     f"✅ **ĐÃ XÁC NHẬN THÀNH CÔNG!**\n\n"
-                    f"👤 **Khách hàng:** `{customer_name}`\n"
+                    f"👤 **Username:** `{customer_name}`\n"
+                    f"🔗 **Link Locket:** {full_link}\n"
                     f"🆔 **Mã đơn:** `{order_id}`\n"
                     f"⏰ **Thời gian tạo:** `{created_at}`\n"
                     f"🎯 **Thời gian hoàn thành:** `{completed_at}`\n\n"
