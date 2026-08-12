@@ -56,7 +56,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 **BẢNG HƯỚNG DẪN QUẢN LÝ BOT DUC KIEN DNS**\n\n"
         "🔑 **1. Tạo mã Key:**\n"
         "• `/genkey <tên_key> <số_ngày> <giá>`\n"
-        "  *Ví dụ:* `/genkey KEY30 30 15000`\n\n"
+        "  *Ví dụ:* `/genkey KEY30 30 15000`\n"
+        "  *Ví dụ:* `/genkey FREE 30 0` (Key 0đ)\n\n"
         "🗑️ **2. Xóa mã Key:**\n"
         "• `/delkey <tên_key>`\n\n"
         "📋 **3. Xem danh sách mã:**\n"
@@ -134,7 +135,7 @@ def create_order():
     try:
         data = request.json
         name = data.get('name')
-        full_link = data.get('full_link', 'Không có link') # Nhận link đầy đủ từ web
+        full_link = data.get('full_link', 'Không có link')
         amount = data.get('amount', 15000)
         
         if not name:
@@ -143,6 +144,36 @@ def create_order():
         order_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
 
+        # NẾU LÀ KEY FREE (0đ) -> TỰ ĐỘNG DUYỆT VÀ BÁO VỀ BOT
+        if amount == 0:
+            orders[order_id] = {
+                'name': name,
+                'full_link': full_link,
+                'status': 'APPROVED', # Duyệt luôn
+                'created_at': created_at,
+                'amount': amount,
+                'message_id': None
+            }
+            msg = (
+                f"🎁 **CÓ KHÁCH SỬ DỤNG KEY MIỄN PHÍ!**\n\n"
+                f"👤 **Username:** `{name}`\n"
+                f"🔗 **Link Locket:** {full_link}\n"
+                f"🆔 **Mã đơn:** `{order_id}`\n"
+                f"⏰ **Thời gian:** `{created_at}`\n\n"
+                f"👉 *Khách đã được tự động cấp quyền tải Profile. Bạn hãy Add Gold cho khách!*"
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": ADMIN_CHAT_ID,
+                    "text": msg,
+                    "parse_mode": "Markdown"
+                }
+            )
+            # auto_approved = True để Web biết mà bỏ qua bước quét QR
+            return jsonify({"success": True, "order_id": order_id, "auto_approved": True})
+
+        # NẾU LÀ ĐƠN BÌNH THƯỜNG -> GỬI YÊU CẦU DUYỆT
         orders[order_id] = {
             'name': name,
             'full_link': full_link,
@@ -178,7 +209,7 @@ def create_order():
         if res.get("ok"):
             orders[order_id]['message_id'] = res['result']['message_id']
 
-        return jsonify({"success": True, "order_id": order_id})
+        return jsonify({"success": True, "order_id": order_id, "auto_approved": False})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
