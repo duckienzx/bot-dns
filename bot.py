@@ -353,7 +353,8 @@ def download_profile(dns_id, username):
 </plist>'''
     return Response(xml_content, mimetype='application/x-apple-asymmetric-key-exchange')
 
-@app.route('/', methods=['GET'])
+# THÊM 'HEAD' VÀO ROUTE NÀY ĐỂ UPTIMEROBOT PHẢN HỒI CHUẨN 200 OK
+@app.route('/', methods=['GET', 'HEAD'])
 def health_check():
     return "Server DNS Locket đang hoạt động bình thường!", 200
 
