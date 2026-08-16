@@ -41,6 +41,29 @@ def save_all_keys(keys_dict):
     except Exception as e:
         print(f"Lỗi lưu dữ liệu lên Redis: {e}")
 
+# HÀM TÍNH TOÁN THỜI GIAN ĐẾM NGƯỢC
+def get_remaining_time(key_info):
+    expires_at = key_info.get("expires_at")
+    
+    # Hỗ trợ tương thích ngược cho các key cũ chưa có expires_at
+    if not expires_at:
+        try:
+            created_dt = datetime.strptime(key_info.get("created_at"), "%H:%M:%S - %d/%m/%Y").replace(tzinfo=VN_TZ)
+            expires_at = (created_dt + timedelta(days=key_info.get("days", 0))).timestamp()
+        except:
+            expires_at = datetime.now(VN_TZ).timestamp() + (key_info.get("days", 0) * 86400)
+
+    now_ts = datetime.now(VN_TZ).timestamp()
+    rem = expires_at - now_ts
+    
+    if rem <= 0:
+        return "🔴 Hết hạn", True
+    
+    rem_days = int(rem // 86400)
+    rem_hours = int((rem % 86400) // 3600)
+    rem_mins = int((rem % 3600) // 60)
+    return f"🟢 Còn {rem_days} ngày {rem_hours} giờ {rem_mins} phút", False
+
 orders = {}
 app = Flask(__name__)
 CORS(app)
@@ -56,11 +79,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 **BẢNG HƯỚNG DẪN QUẢN LÝ BOT DUC KIEN DNS**\n\n"
         "🔑 **1. Tạo mã Key:**\n"
         "• `/genkey <tên_key> <số_ngày> <giá>`\n"
-        "  *Ví dụ:* `/genkey KEY30 30 15000`\n"
-        "  *Ví dụ:* `/genkey FREE 30 0` (Key 0đ)\n\n"
-        "🗑️ **2. Xóa mã Key:**\n"
+        "  *Ví dụ:* `/genkey KEY30 30 15000`\n\n"
+        "✏️ **2. Sửa mã Key:**\n"
+        "• `/editkey <tên_key> <số_ngày_mới> <giá_mới>`\n\n"
+        "🗑️ **3. Xóa mã Key:**\n"
         "• `/delkey <tên_key>`\n\n"
-        "📋 **3. Xem danh sách mã:**\n"
+        "📋 **4. Xem danh sách mã:**\n"
         "• `/listkeys`"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -84,10 +108,14 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Mã `{custom_key}` đã tồn tại!", parse_mode="Markdown")
         return
 
+    created_dt = datetime.now(VN_TZ)
+    expires_dt = created_dt + timedelta(days=days)
+
     keys[custom_key] = {
         "days": days,
         "price": price,
-        "created_at": datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
+        "created_at": created_dt.strftime("%H:%M:%S - %d/%m/%Y"),
+        "expires_at": expires_dt.timestamp() # Lưu thêm mốc hết hạn
     }
     save_all_keys(keys)
 
@@ -96,6 +124,48 @@ async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔑 **Mã Key:** `{custom_key}`\n"
         f"⏳ **Thời hạn:** `{days} ngày`\n"
         f"💵 **Giá:** `{price:,} VNĐ`",
+        parse_mode="Markdown"
+    )
+
+async def editkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_chat.id) != ADMIN_CHAT_ID: return
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text("⚠️ **Cú pháp:** `/editkey <tên_key> <số_ngày_mới> <giá_mới>`", parse_mode="Markdown")
+        return
+
+    custom_key = args[0].upper()
+    try:
+        days, price = int(args[1]), int(args[2])
+    except ValueError:
+        await update.message.reply_text("⚠️ Số ngày mới và Giá tiền mới phải là số!")
+        return
+
+    keys = get_all_keys()
+    if custom_key not in keys:
+        await update.message.reply_text(f"❌ Không tìm thấy mã `{custom_key}`!", parse_mode="Markdown")
+        return
+
+    # Tính lại ngày hết hạn dựa trên ngày tạo gốc
+    created_str = keys[custom_key].get("created_at")
+    try:
+        created_dt = datetime.strptime(created_str, "%H:%M:%S - %d/%m/%Y").replace(tzinfo=VN_TZ)
+    except:
+        created_dt = datetime.now(VN_TZ)
+        
+    expires_dt = created_dt + timedelta(days=days)
+
+    keys[custom_key]["days"] = days
+    keys[custom_key]["price"] = price
+    keys[custom_key]["expires_at"] = expires_dt.timestamp()
+    
+    save_all_keys(keys)
+
+    await update.message.reply_text(
+        f"✅ **ĐÃ SỬA MÃ KEY THÀNH CÔNG!**\n\n"
+        f"🔑 **Mã Key:** `{custom_key}`\n"
+        f"⏳ **Thời hạn mới:** `{days} ngày`\n"
+        f"💵 **Giá mới:** `{price:,} VNĐ`",
         parse_mode="Markdown"
     )
 
@@ -124,7 +194,9 @@ async def listkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "📋 **DANH SÁCH MÃ KEY ĐANG CÓ:**\n\n"
     for k, v in keys.items():
-        msg += f"• `{k}`: {v['days']} ngày | Giá: `{v.get('price', 15000):,} VNĐ`\n"
+        status_text, is_expired = get_remaining_time(v)
+        price = v.get('price', 0)
+        msg += f"• Mã: `{k}` | Giá: `{price:,}đ`\n  └ {status_text}\n\n"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -144,12 +216,11 @@ def create_order():
         order_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
 
-        # NẾU LÀ KEY FREE (0đ) -> TỰ ĐỘNG DUYỆT VÀ BÁO VỀ BOT
         if amount == 0:
             orders[order_id] = {
                 'name': name,
                 'full_link': full_link,
-                'status': 'APPROVED', # Duyệt luôn
+                'status': 'APPROVED',
                 'created_at': created_at,
                 'amount': amount,
                 'message_id': None
@@ -164,16 +235,10 @@ def create_order():
             )
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": ADMIN_CHAT_ID,
-                    "text": msg,
-                    "parse_mode": "Markdown"
-                }
+                json={"chat_id": ADMIN_CHAT_ID, "text": msg, "parse_mode": "Markdown"}
             )
-            # auto_approved = True để Web biết mà bỏ qua bước quét QR
             return jsonify({"success": True, "order_id": order_id, "auto_approved": True})
 
-        # NẾU LÀ ĐƠN BÌNH THƯỜNG -> GỬI YÊU CẦU DUYỆT
         orders[order_id] = {
             'name': name,
             'full_link': full_link,
@@ -221,9 +286,15 @@ def check_key():
         keys = get_all_keys()
 
         if not raw_key or raw_key not in keys:
-            return jsonify({"success": False, "message": "Mã không hợp lệ!"}), 400
+            return jsonify({"success": False, "message": "Mã không hợp lệ hoặc không tồn tại!"}), 400
 
         key_info = keys[raw_key]
+        
+        # Kiểm tra xem mã đã hết hạn chưa
+        _, is_expired = get_remaining_time(key_info)
+        if is_expired:
+            return jsonify({"success": False, "message": "Mã này đã hết hạn sử dụng!"}), 400
+
         return jsonify({
             "success": True,
             "key": raw_key,
@@ -274,7 +345,6 @@ def check_status(order_id):
         return jsonify({"status": "NOT_FOUND"})
     return jsonify({"status": order['status'], "name": order['name']})
 
-# API TRẢ VỀ FILE CONFIG TRỰC TIẾP VÀO SETTINGS IOS
 @app.route('/download-profile/<dns_id>/<username>.mobileconfig', methods=['GET'])
 def download_profile(dns_id, username):
     xml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -353,7 +423,6 @@ def download_profile(dns_id, username):
 </plist>'''
     return Response(xml_content, mimetype='application/x-apple-asymmetric-key-exchange')
 
-# THÊM 'HEAD' VÀO ROUTE NÀY ĐỂ UPTIMEROBOT PHẢN HỒI CHUẨN 200 OK
 @app.route('/', methods=['GET', 'HEAD'])
 def health_check():
     return "Server DNS Locket đang hoạt động bình thường!", 200
@@ -395,6 +464,7 @@ if __name__ == '__main__':
     tg_app.add_handler(CommandHandler("start", help_command))
     tg_app.add_handler(CommandHandler("help", help_command))
     tg_app.add_handler(CommandHandler("genkey", genkey_command))
+    tg_app.add_handler(CommandHandler("editkey", editkey_command))
     tg_app.add_handler(CommandHandler("delkey", delkey_command))
     tg_app.add_handler(CommandHandler("listkeys", listkeys_command))
     tg_app.add_handler(CallbackQueryHandler(button_callback))
