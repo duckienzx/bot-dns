@@ -209,13 +209,34 @@ def create_order():
         name = data.get('name')
         full_link = data.get('full_link', 'Không có link')
         amount = data.get('amount', 15000)
+        used_key = data.get('key', '').strip().upper() # Lấy mã key từ web gửi lên
         
         if not name:
             return jsonify({"success": False, "message": "Thiếu tên!"}), 400
 
+        keys = get_all_keys()
+        
+        # NẾU WEB CÓ GỬI KÈM KEY -> KIỂM TRA LẠI KEY CHO CHẮC CHẮN
+        if used_key:
+            if used_key not in keys:
+                return jsonify({"success": False, "message": "Mã Key không hợp lệ hoặc đã được sử dụng!"}), 400
+            
+            # Kiểm tra xem có bị hết hạn không
+            _, is_expired = get_remaining_time(keys[used_key])
+            if is_expired:
+                return jsonify({"success": False, "message": "Mã Key này đã hết hạn!"}), 400
+            
+            # Nếu key ngon lành -> XÓA KEY (Để khách khác không dùng lặp lại được)
+            del keys[used_key]
+            save_all_keys(keys)
+            
+            # Đặt số tiền = 0 vì khách đã dùng key thanh toán
+            amount = 0
+
         order_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now(VN_TZ).strftime("%H:%M:%S - %d/%m/%Y")
 
+        # XỬ LÝ ĐƠN HÀNG 0đ (KEY MIỄN PHÍ HOẶC ĐÃ DÙNG KEY)
         if amount == 0:
             orders[order_id] = {
                 'name': name,
@@ -225,13 +246,17 @@ def create_order():
                 'amount': amount,
                 'message_id': None
             }
+            
+            # Báo về Bot xem khách dùng Key gì
+            key_text = f"🔑 **Mã Key áp dụng:** `{used_key}`\n" if used_key else ""
             msg = (
-                f"🎁 **CÓ KHÁCH SỬ DỤNG KEY MIỄN PHÍ!**\n\n"
+                f"🎁 **CÓ KHÁCH SỬ DỤNG KEY THÀNH CÔNG!**\n\n"
                 f"👤 **Username:** `{name}`\n"
                 f"🔗 **Link Locket:** {full_link}\n"
                 f"🆔 **Mã đơn:** `{order_id}`\n"
+                f"{key_text}"
                 f"⏰ **Thời gian:** `{created_at}`\n\n"
-                f"👉 *Khách đã được tự động cấp quyền tải Profile. Bạn hãy Add Gold cho khách!*"
+                f"👉 *Khách đã được tự động duyệt. Bạn hãy Add Gold cho khách!*"
             )
             requests.post(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
@@ -239,6 +264,7 @@ def create_order():
             )
             return jsonify({"success": True, "order_id": order_id, "auto_approved": True})
 
+        # XỬ LÝ ĐƠN HÀNG BÌNH THƯỜNG (CHỜ CHUYỂN KHOẢN)
         orders[order_id] = {
             'name': name,
             'full_link': full_link,
