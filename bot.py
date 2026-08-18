@@ -312,7 +312,7 @@ def check_key():
         keys = get_all_keys()
 
         if not raw_key or raw_key not in keys:
-            return jsonify({"success": False, "message": "Mã không hợp lệ hoặc không tồn tại!"}), 400
+            return jsonify({"success": False, "message": "Mã không hợp lệ hoặc đã được sử dụng!"}), 400
 
         key_info = keys[raw_key]
         
@@ -495,4 +495,5 @@ if __name__ == '__main__':
     tg_app.add_handler(CommandHandler("listkeys", listkeys_command))
     tg_app.add_handler(CallbackQueryHandler(button_callback))
     
-    tg_app.run_polling()
+    # ĐÂY LÀ DÒNG FIX LỖI CONFLICT TRÊN RENDER BẠN NHÉ!
+    tg_app.run_polling(drop_pending_updates=True)
